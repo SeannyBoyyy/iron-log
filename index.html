@@ -62,7 +62,7 @@
     position:sticky; top:0; z-index:20;
     display:flex; align-items:center; justify-content:space-between;
     padding:18px 18px 14px;
-    background:linear-gradient(180deg, var(--iron) 70%, transparent);
+    background:var(--iron);
   }
   .brand{ display:flex; align-items:center; gap:10px; }
   .brand-mark{
@@ -78,13 +78,14 @@
     font-size:19px; text-transform:uppercase;
   }
   .icon-btn{
-    width:38px; height:38px; border-radius:50%;
+    width:44px; height:44px; border-radius:50%;
     background:var(--iron-soft); border:1px solid var(--line);
     display:flex; align-items:center; justify-content:center;
-    color:var(--chalk-dim);
+    color:var(--chalk-dim); touch-action:manipulation;
+    position:relative; z-index:21;
   }
   .icon-btn:active{ background:var(--iron-soft-2); }
-  .icon-btn svg{ width:18px; height:18px; }
+  .icon-btn svg{ width:18px; height:18px; pointer-events:none; }
 
   /* ---------- main / views ---------- */
   main{ flex:1; padding:0 16px 110px; }
@@ -861,6 +862,72 @@ function renderExerciseCard(ex){
     </div>`;
 }
 
+let todayWired = false;
+
+function wireTodayDelegation(){
+  const root = document.getElementById('view-today');
+  root.addEventListener('click', (e) => {
+    // Finish workout button
+    if(e.target.id === 'btn-finish'){ finishWorkout(); return; }
+
+    // Finish rest button
+    if(e.target.id === 'btn-finish-rest'){
+      advanceCycle(); save(); renderToday();
+      toast('Rest logged. Back at it next session.');
+      return;
+    }
+
+    // Dismiss install hint
+    if(e.target.id === 'dismiss-hint'){
+      localStorage.setItem(HINT_KEY, '1');
+      document.getElementById('install-hint')?.remove();
+      return;
+    }
+
+    // Dismiss onboarding
+    if(e.target.id === 'dismiss-onboarding'){
+      localStorage.setItem(ONBOARDING_KEY, '1');
+      document.getElementById('onboarding-card')?.remove();
+      return;
+    }
+
+    // + Set
+    const addBtn = e.target.closest('[data-add-set]');
+    if(addBtn){
+      const exId = addBtn.dataset.addSet;
+      const container = document.getElementById(`set-rows-${exId}`);
+      if(!container) return;
+      const nextIdx = container.querySelectorAll('.set-row').length;
+      const prefill = addBtn.dataset.lastWeight || '';
+      const row = document.createElement('div');
+      row.className = 'set-row';
+      row.innerHTML = `
+        <span class="set-row-label">${nextIdx+1}</span>
+        <input class="set-input unit" type="text" inputmode="decimal" placeholder="kg" value="${escapeHtml(String(prefill))}" id="set-w-${exId}-${nextIdx}">
+        <span class="set-x">×</span>
+        <input class="set-input" type="text" inputmode="numeric" placeholder="reps" id="set-r-${exId}-${nextIdx}">
+      `;
+      container.appendChild(row);
+      row.querySelector('input').focus();
+      const rmBtn = addBtn.closest('.ex-card')?.querySelector('[data-remove-set]');
+      if(rmBtn) rmBtn.disabled = false;
+      return;
+    }
+
+    // − Set
+    const rmBtn = e.target.closest('[data-remove-set]');
+    if(rmBtn){
+      const exId = rmBtn.dataset.removeSet;
+      const container = document.getElementById(`set-rows-${exId}`);
+      if(!container) return;
+      const rows = container.querySelectorAll('.set-row');
+      if(rows.length <= 1) return;
+      rows[rows.length - 1].remove();
+      if(container.querySelectorAll('.set-row').length <= 1) rmBtn.disabled = true;
+    }
+  });
+}
+
 function renderToday(){
   const root = document.getElementById('view-today');
   const day = state.days[state.cycleIndex];
@@ -883,10 +950,8 @@ function renderToday(){
         <button class="btn btn-primary" id="btn-finish-rest">Mark Done → Next: ${escapeHtml(nextDay.label)}</button>
       </div>`;
     wireInstallHint();
-    document.getElementById('btn-finish-rest').addEventListener('click', () => {
-      advanceCycle(); save(); renderToday();
-      toast('Rest logged. Back at it next session.');
-    });
+    wireOnboarding();
+    if(!todayWired){ wireTodayDelegation(); todayWired = true; }
     return;
   }
 
@@ -905,44 +970,7 @@ function renderToday(){
     </div>`;
   wireInstallHint();
   wireOnboarding();
-  document.getElementById('btn-finish').addEventListener('click', finishWorkout);
-  root.addEventListener('click', (e) => {
-    // + Set
-    const addBtn = e.target.closest('[data-add-set]');
-    if(addBtn){
-      const exId = addBtn.dataset.addSet;
-      const container = document.getElementById(`set-rows-${exId}`);
-      if(!container) return;
-      const nextIdx = container.querySelectorAll('.set-row').length;
-      const prefill = addBtn.dataset.lastWeight || '';
-      const row = document.createElement('div');
-      row.className = 'set-row';
-      row.innerHTML = `
-        <span class="set-row-label">${nextIdx+1}</span>
-        <input class="set-input unit" type="text" inputmode="decimal" placeholder="kg" value="${escapeHtml(String(prefill))}" id="set-w-${exId}-${nextIdx}">
-        <span class="set-x">×</span>
-        <input class="set-input" type="text" inputmode="numeric" placeholder="reps" id="set-r-${exId}-${nextIdx}">
-      `;
-      container.appendChild(row);
-      row.querySelector('input').focus();
-      // enable − since we now have 2+ rows
-      const rmBtn = addBtn.closest('.ex-card')?.querySelector('[data-remove-set]');
-      if(rmBtn) rmBtn.disabled = false;
-      return;
-    }
-    // − Set
-    const rmBtn = e.target.closest('[data-remove-set]');
-    if(rmBtn){
-      const exId = rmBtn.dataset.removeSet;
-      const container = document.getElementById(`set-rows-${exId}`);
-      if(!container) return;
-      const rows = container.querySelectorAll('.set-row');
-      if(rows.length <= 1) return; // button should be disabled, but safety guard
-      rows[rows.length - 1].remove();
-      // disable − if now at 1 row
-      if(container.querySelectorAll('.set-row').length <= 1) rmBtn.disabled = true;
-    }
-  });
+  if(!todayWired){ wireTodayDelegation(); todayWired = true; }
 }
 
 /* ---------- rendering: progress ---------- */
@@ -1463,6 +1491,7 @@ function openSettings(){
       toast('Reset complete.');
     }
   });
+  openSheet();
 }
 
 function openDayPicker(){
@@ -1490,6 +1519,7 @@ function openDayPicker(){
     save(); closeSheet(); renderToday();
     toast(`Cycle set to Day ${state.cycleIndex+1} — ${state.days[state.cycleIndex].label}.`);
   });
+  openSheet();
 }
 
 function exportData(){
