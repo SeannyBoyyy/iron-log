@@ -242,6 +242,20 @@
     border-radius:20px; padding:3px 8px; flex:none; white-space:nowrap;
   }
   .day-num-badge.is-current{ background:rgba(193,87,42,0.18); border-color:var(--rust-dim); color:var(--rust); }
+
+  .reorder-row{ display:flex; align-items:center; gap:10px; padding:13px 0; border-bottom:1px solid var(--line); }
+  .reorder-row:last-of-type{ border-bottom:none; }
+  .reorder-num{ font-family:var(--mono); font-size:10px; color:var(--chalk-dim); width:36px; flex:none; }
+  .reorder-name{ flex:1; font-size:14px; font-weight:600; }
+  .reorder-current{ font-family:var(--mono); font-size:10px; color:var(--rust); font-weight:400; margin-left:6px; }
+  .reorder-btns{ display:flex; gap:5px; flex:none; }
+  .day-sheet-arrow{
+    background:var(--iron); border:1px solid var(--line); color:var(--chalk);
+    border-radius:8px; width:38px; height:38px; font-size:16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .day-sheet-arrow:disabled{ opacity:0.2; pointer-events:none; }
+  .day-sheet-arrow:active{ background:var(--iron-soft-2); }
   .day-label-input{
     background:transparent; border:none; font-family:var(--display); font-size:17px;
     color:var(--chalk); padding:0; width:140px;
@@ -1186,6 +1200,48 @@ function openPresetSheet(){
   openSheet();
 }
 
+function openReorderDaysSheet(){
+  function render(){
+    const rows = state.days.map((day,i) => `
+      <div class="reorder-row">
+        <span class="reorder-num">Day ${i+1}</span>
+        <span class="reorder-name">${escapeHtml(day.label)}${i===state.cycleIndex?'<span class="reorder-current">▶ now</span>':''}</span>
+        <div class="reorder-btns">
+          <button class="day-sheet-arrow" data-sup="${i}" ${i===0?'disabled':''}>↑</button>
+          <button class="day-sheet-arrow" data-sdown="${i}" ${i===state.days.length-1?'disabled':''}>↓</button>
+        </div>
+      </div>`).join('');
+    setSheet(`
+      <div class="sheet-handle"></div>
+      <h2 class="sheet-title">Reorder Days</h2>
+      <p style="font-size:13px; color:var(--chalk-dim); margin:0 0 8px; line-height:1.5;">Tap ↑ ↓ to rearrange. Saves as you go.</p>
+      ${rows}
+      <button class="btn btn-primary" id="reorder-done" style="margin-top:18px;">Done</button>
+    `);
+    document.querySelectorAll('[data-sup]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.sup, 10);
+        if(idx <= 0) return;
+        [state.days[idx-1], state.days[idx]] = [state.days[idx], state.days[idx-1]];
+        save(); render();
+      });
+    });
+    document.querySelectorAll('[data-sdown]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.sdown, 10);
+        if(idx >= state.days.length-1) return;
+        [state.days[idx], state.days[idx+1]] = [state.days[idx+1], state.days[idx]];
+        save(); render();
+      });
+    });
+    document.getElementById('reorder-done').addEventListener('click', () => {
+      closeSheet(); renderSplit(); safeRenderToday();
+    });
+  }
+  render();
+  openSheet();
+}
+
 /* ---------- rendering: split ---------- */
 function renderSplit(){
   const root = document.getElementById('view-split');
@@ -1197,9 +1253,10 @@ function renderSplit(){
 
   if(splitSegment === 'days'){
     html += `
-      <div style="display:flex; gap:8px; margin-bottom:14px;">
-        <button class="btn btn-ghost" id="btn-add-day" style="flex:1;">+ Add Day</button>
-        <button class="btn btn-outline" id="btn-load-preset" style="flex:1;">Load Preset</button>
+      <button class="btn btn-ghost" id="btn-add-day" style="width:100%; margin-bottom:8px;">+ Add Day</button>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="btn btn-outline" id="btn-reorder-days" style="flex:1; font-size:12.5px;">⇅ Reorder Days</button>
+        <button class="btn btn-outline" id="btn-load-preset" style="flex:1; font-size:12px; color:var(--chalk-dim);">Load Preset</button>
       </div>
       <div class="section-title" style="margin-top:0;">Your ${state.days.length}-Day Cycle</div>`;
     state.days.forEach((day,i) => {
@@ -1222,10 +1279,6 @@ function renderSplit(){
       html += `
         <div class="day-card" data-day="${day.id}">
           <div class="day-card-head">
-            <div class="day-reorder-col">
-              <button class="day-arrow" data-day-up="${day.id}" data-idx="${i}" ${i===0?'disabled':''} aria-label="Move day up">↑</button>
-              <button class="day-arrow" data-day-down="${day.id}" data-idx="${i}" ${i===state.days.length-1?'disabled':''} aria-label="Move day down">↓</button>
-            </div>
             <div style="flex:1; min-width:0;">
               <input class="day-label-input" value="${escapeHtml(day.label)}" data-day-label="${day.id}" style="width:100%;">
             </div>
@@ -1234,12 +1287,8 @@ function renderSplit(){
             </span>
           </div>
           <div class="day-ex-list">${exListHtml}</div>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px;">
-            <button class="chip chip-add" data-add-day="${day.id}" style="flex:1;">+ Exercise</button>
-            <button class="day-del-btn" data-delete-day="${day.id}" aria-label="Delete day">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"></path></svg>
-            </button>
-          </div>
+          <button class="chip chip-add" data-add-day="${day.id}" style="width:100%; margin-top:4px;">+ Exercise</button>
+          ${state.days.length > 1 ? '<button data-delete-day="' + day.id + '" style="width:100%; background:none; border:none; color:var(--chalk-dim); font-family:var(--mono); font-size:11px; padding:10px 4px 2px; cursor:pointer; opacity:0.5;" aria-label="Delete day">delete this day</button>' : ''}
         </div>`;
     });
   } else {
@@ -1293,27 +1342,6 @@ function wireSplitView(root){
       if(day){ day.label = input.value.trim() || 'Day'; save(); }
     });
   });
-  // reorder days
-  root.querySelectorAll('[data-day-up]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx, 10);
-      if(idx <= 0) return;
-      [state.days[idx-1], state.days[idx]] = [state.days[idx], state.days[idx-1]];
-      if(state.cycleIndex === idx) state.cycleIndex = idx-1;
-      else if(state.cycleIndex === idx-1) state.cycleIndex = idx;
-      save(); renderSplit(); safeRenderToday();
-    });
-  });
-  root.querySelectorAll('[data-day-down]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx, 10);
-      if(idx >= state.days.length-1) return;
-      [state.days[idx], state.days[idx+1]] = [state.days[idx+1], state.days[idx]];
-      if(state.cycleIndex === idx) state.cycleIndex = idx+1;
-      else if(state.cycleIndex === idx+1) state.cycleIndex = idx;
-      save(); renderSplit(); safeRenderToday();
-    });
-  });
   // delete day
   root.querySelectorAll('[data-delete-day]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1321,7 +1349,6 @@ function wireSplitView(root){
       const day = state.days.find(d => d.id === btn.dataset.deleteDay);
       if(!day) return;
       if(!confirm(`Delete "${day.label}"? Exercises stay in your library.`)) return;
-      const idx = state.days.indexOf(day);
       state.days = state.days.filter(d => d.id !== day.id);
       state.cycleIndex = Math.min(state.cycleIndex, state.days.length-1);
       save(); renderSplit(); safeRenderToday();
@@ -1335,6 +1362,9 @@ function wireSplitView(root){
     save(); renderSplit();
     toast('New day added. Tap the name to rename it.');
   });
+  // reorder days sheet
+  const reorderBtn = document.getElementById('btn-reorder-days');
+  if(reorderBtn) reorderBtn.addEventListener('click', openReorderDaysSheet);
   // load preset
   const loadPresetBtn = document.getElementById('btn-load-preset');
   if(loadPresetBtn) loadPresetBtn.addEventListener('click', openPresetSheet);
@@ -1734,7 +1764,7 @@ function openDayPicker(){
     const picked = document.querySelector('input[name="day-pick"]:checked');
     if(!picked) return;
     state.cycleIndex = parseInt(picked.value, 10);
-    save(); closeSheet(); renderToday();
+    save(); closeSheet(); renderToday(); renderSplit();
     toast(`Cycle set to Day ${state.cycleIndex+1} — ${state.days[state.cycleIndex].label}.`);
   });
   openSheet();
