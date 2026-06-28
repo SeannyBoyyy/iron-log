@@ -804,6 +804,22 @@ function finishWorkout(){
 
   if(!anyFilled){ toast('Log at least one set before finishing.'); return; }
 
+  // sanity check — warn if any weight looks like a typo (> 300kg / 660lbs)
+  const maxKg = 300;
+  const suspiciousSets = [];
+  Object.entries(entries).forEach(([exId, sets]) => {
+    const ex = state.exercises[exId];
+    sets.forEach(s => {
+      if(s.weight > maxKg){
+        suspiciousSets.push(`${ex?.name}: ${formatWeight(toDisplay(s.weight))}${unitLabel()}`);
+      }
+    });
+  });
+  if(suspiciousSets.length){
+    const msg = `These weights look unusually high — possible typo?\n\n${suspiciousSets.join('\n')}\n\nLog anyway?`;
+    if(!confirm(msg)) return;
+  }
+
   const willAscend = [];
   day.exerciseIds.forEach(exId => {
     if(!entries[exId]) return;
